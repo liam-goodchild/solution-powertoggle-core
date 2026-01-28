@@ -49,7 +49,9 @@ app.timer("Scheduler", {
     for (let i = 0; i <= drift; i++) {
       const pk = nowUtc.minus({ minutes: i }).toFormat("yyyyLLddHHmm");
 
-      for await (const e of dueClient.listEntities({ queryOptions: { filter: `PartitionKey eq '${pk}'` } })) {
+      for await (const e of dueClient.listEntities({
+        queryOptions: { filter: `PartitionKey eq '${pk}'` },
+      })) {
         try {
           const { sub } = parseVmId(e.vmResourceId);
           const vmKey = toSafeKey(e.vmResourceId);
@@ -64,7 +66,12 @@ app.timer("Scheduler", {
           }
 
           // If disabled or stale schedule, purge and do nothing
-          if (!sched.enabled || (e.scheduleHash && sched.scheduleHash && e.scheduleHash !== sched.scheduleHash)) {
+          if (
+            !sched.enabled ||
+            (e.scheduleHash &&
+              sched.scheduleHash &&
+              e.scheduleHash !== sched.scheduleHash)
+          ) {
             await dueClient.deleteEntity(e.partitionKey, e.rowKey);
             continue;
           }
@@ -78,5 +85,5 @@ app.timer("Scheduler", {
         }
       }
     }
-  }
+  },
 });

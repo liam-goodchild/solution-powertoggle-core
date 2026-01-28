@@ -19,16 +19,44 @@ function parseHHmm(s) {
   return m ? { hh: parseInt(m[1], 10), mm: parseInt(m[2], 10) } : null;
 }
 
-function buildOccurrences(resourceId, tz, weekdaysOnly, start, stop, horizonDays) {
+function buildOccurrences(
+  resourceId,
+  tz,
+  weekdaysOnly,
+  start,
+  stop,
+  horizonDays,
+) {
   const out = [];
-  const allowed = weekdaysOnly ? new Set([1, 2, 3, 4, 5]) : new Set([1, 2, 3, 4, 5, 6, 7]);
+  const allowed = weekdaysOnly
+    ? new Set([1, 2, 3, 4, 5])
+    : new Set([1, 2, 3, 4, 5, 6, 7]);
 
   for (let d = 0; d < horizonDays; d++) {
-    const dayLocal = DateTime.now().setZone(tz).startOf("day").plus({ days: d });
+    const dayLocal = DateTime.now()
+      .setZone(tz)
+      .startOf("day")
+      .plus({ days: d });
     if (!allowed.has(dayLocal.weekday)) continue;
 
-    if (start) out.push({ atUtc: dayLocal.set({ hour: start.hh, minute: start.mm }).toUTC().startOf("minute"), action: "alloc", vmResourceId: resourceId });
-    if (stop) out.push({ atUtc: dayLocal.set({ hour: stop.hh, minute: stop.mm }).toUTC().startOf("minute"), action: "dealloc", vmResourceId: resourceId });
+    if (start)
+      out.push({
+        atUtc: dayLocal
+          .set({ hour: start.hh, minute: start.mm })
+          .toUTC()
+          .startOf("minute"),
+        action: "alloc",
+        vmResourceId: resourceId,
+      });
+    if (stop)
+      out.push({
+        atUtc: dayLocal
+          .set({ hour: stop.hh, minute: stop.mm })
+          .toUTC()
+          .startOf("minute"),
+        action: "dealloc",
+        vmResourceId: resourceId,
+      });
   }
   return out;
 }
@@ -52,7 +80,14 @@ app.timer("DailyExtend", {
       const stop = parseHHmm(s.stop);
       if (!start && !stop) continue;
 
-      const occurrences = buildOccurrences(s.vmResourceId, tz, !!s.weekdaysOnly, start, stop, horizonDays);
+      const occurrences = buildOccurrences(
+        s.vmResourceId,
+        tz,
+        !!s.weekdaysOnly,
+        start,
+        stop,
+        horizonDays,
+      );
       const vmKey = toSafeKey(s.vmResourceId);
 
       for (const occ of occurrences) {
@@ -64,13 +99,13 @@ app.timer("DailyExtend", {
             rowKey: rk,
             vmResourceId: occ.vmResourceId,
             action: occ.action,
-            scheduleHash: s.scheduleHash
+            scheduleHash: s.scheduleHash,
           },
-          "Replace"
+          "Replace",
         );
       }
     }
 
     context.log("DailyExtend completed");
-  }
+  },
 });

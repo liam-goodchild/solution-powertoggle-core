@@ -95,4 +95,3 @@ stages:
               additionalCommandOptions: '${{ parameters.additionalTfVars }} -var=enable_eventgrid_subscription=false'
               publishPlan: false
               ensureBackendContainer: true
-

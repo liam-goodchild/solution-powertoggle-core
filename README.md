@@ -39,11 +39,11 @@ Execute Start/Stop Operations on VMs
 
 ### Functions
 
-| Function | Trigger | Purpose |
-|----------|---------|---------|
-| **TagIngest** | Event Grid | Ingests VM tag changes and populates schedule tables |
-| **DailyExtend** | Timer (00:05 UTC) | Maintains rolling window of scheduled actions |
-| **Scheduler** | Timer (every minute) | Executes power operations for the current minute |
+| Function        | Trigger              | Purpose                                              |
+| --------------- | -------------------- | ---------------------------------------------------- |
+| **TagIngest**   | Event Grid           | Ingests VM tag changes and populates schedule tables |
+| **DailyExtend** | Timer (00:05 UTC)    | Maintains rolling window of scheduled actions        |
+| **Scheduler**   | Timer (every minute) | Executes power operations for the current minute     |
 
 ---
 
@@ -53,14 +53,14 @@ Execute Start/Stop Operations on VMs
 
 Configure automation by applying these tags to Azure Virtual Machines:
 
-| Tag | Purpose | Format | Required | Default |
-|-----|---------|--------|----------|---------|
-| `AutoStart` | VM start time | HH:mm (24-hour) | No* | - |
-| `AutoStop` | VM stop/deallocate time | HH:mm (24-hour) | No* | - |
-| `AutoEnabled` | Enable/disable schedule | true/false | No | true |
-| `AutoWeekdaysOnly` | Monday-Friday only | true/false | No | false |
+| Tag                | Purpose                 | Format          | Required | Default |
+| ------------------ | ----------------------- | --------------- | -------- | ------- |
+| `AutoStart`        | VM start time           | HH:mm (24-hour) | No\*     | -       |
+| `AutoStop`         | VM stop/deallocate time | HH:mm (24-hour) | No\*     | -       |
+| `AutoEnabled`      | Enable/disable schedule | true/false      | No       | true    |
+| `AutoWeekdaysOnly` | Monday-Friday only      | true/false      | No       | false   |
 
-*At least one of `AutoStart` or `AutoStop` must be set.
+\*At least one of `AutoStart` or `AutoStop` must be set.
 
 ### Example
 
@@ -91,6 +91,7 @@ The solution deploys via Azure DevOps pipelines:
 2. **CD Pipeline** - Deploys infrastructure and functions to target environments
 
 The CD pipeline follows a multi-stage approach:
+
 1. Deploy base infrastructure (without Event Grid subscription)
 2. Build and deploy Azure Functions
 3. Wait for function registration
