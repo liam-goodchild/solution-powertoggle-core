@@ -1,3 +1,5 @@
+#checkov:skip=CKV_AZURE_212:Flex Consumption plan auto-scales - minimum instances not applicable
+#checkov:skip=CKV_AZURE_225:Zone redundancy not supported for Flex Consumption SKU
 resource "azurerm_service_plan" "plan" {
   name                = local.service_plan_name
   resource_group_name = azurerm_resource_group.rg.name
