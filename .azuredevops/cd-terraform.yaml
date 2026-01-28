@@ -141,13 +141,22 @@ stages:
               archiveFile: '$(Build.ArtifactStagingDirectory)/functionapp.zip'
               replaceExistingArchive: true
 
-          - task: AzureFunctionApp@2
+          - task: AzureCLI@2
             displayName: 'Deploy Functions'
             inputs:
               azureSubscription: $(serviceConnectionName)
-              appType: functionAppLinux
-              appName: $(functionAppName)
-              package: '$(Build.ArtifactStagingDirectory)/functionapp.zip'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                az functionapp deployment source config-zip \
+                  --resource-group "$FUNCTION_RG" \
+                  --name "$FUNCTION_APP" \
+                  --src "$PACKAGE_PATH"
+            env:
+              FUNCTION_RG: $(functionResourceGroupName)
+              FUNCTION_APP: $(functionAppName)
+              PACKAGE_PATH: $(Build.ArtifactStagingDirectory)/functionapp.zip
 
           - task: AzureCLI@2
             displayName: 'Wait For Function To Exist'
