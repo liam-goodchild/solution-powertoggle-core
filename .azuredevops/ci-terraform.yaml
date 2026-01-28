@@ -31,10 +31,6 @@ parameters:
   - name: envs
     type: object
     default:
-      dev:
-        backendResourceGroupName: sh-mgmt-dev-uks-tf-rg-01
-        backendStorageAccountName: shmgmtdevukstfst01
-        tfvars: infra/vars/uks/dev.tfvars
       prd:
         backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
         backendStorageAccountName: shmgmtprdukstfst01

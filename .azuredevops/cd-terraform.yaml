@@ -35,13 +35,6 @@ parameters:
   - name: envs
     type: object
     default:
-      dev:
-        backendResourceGroupName: sh-mgmt-dev-uks-tf-rg-01
-        backendStorageAccountName: shmgmtdevukstfst01
-        tfvars: infra/vars/uks/dev.tfvars
-        functionAppName: sh-app-dev-uks-pwt-fa-01
-        functionResourceGroupName: sh-app-dev-uks-pwt-rg-01
-        eventgridFunctionName: TagIngest
       prd:
         backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
         backendStorageAccountName: shmgmtprdukstfst01
