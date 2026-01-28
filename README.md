@@ -1,173 +1,168 @@
-<!-- prettier-ignore-start -->
-<!-- textlint-disable -->
+# Overview
 
-# Repository Setup Standards
+An Azure-based VM power management automation system that automatically starts and stops virtual machines on a schedule using resource tags making it easy to manage schedules without modifying infrastructure code.
 
-This document defines the standard for setting up a new repository from this template.
+## Architecture
 
-The primary objective is to ensure all repositories maintain consistent configuration, security settings, and documentation from the outset.
+### Terraform Resources
 
-- Ensures security features are enabled from day one
-- Maintains consistent branch protection across all repositories
-- Provides a repeatable, standardised setup process
-- Reduces configuration drift between projects
-- Enables automated documentation generation
+| Resource | Type | Description |
+|----------|------|-------------|
+| `azurerm_resource_group.rg` | Resource Group | Contains all solution resources |
+| `azurerm_storage_account.sa` | Storage Account | Hosts table storage for schedules |
+| `azurerm_storage_container.files` | Blob Container | Stores function app deployment files |
+| `azurerm_storage_table.tables` | Storage Tables | `VmSchedules` and `DueIndex` tables |
+| `azurerm_service_plan.plan` | App Service Plan | Flex Consumption (FC1) plan for functions |
+| `azurerm_function_app_flex_consumption.func` | Function App | Hosts the three Azure Functions |
+| `azurerm_eventgrid_system_topic.rm_subscription` | Event Grid Topic | Subscription-level resource monitoring |
+| `azurerm_eventgrid_system_topic_event_subscription.to_function` | Event Subscription | Routes VM events to TagIngest |
+| `azurerm_role_assignment.func_vm_contributor_sub` | Role Assignment | Virtual Machine Contributor at subscription scope |
+| `azurerm_role_assignment.func_table_contributor_sa` | Role Assignment | Storage Table Data Contributor on storage account |
 
----
+### Workflow
 
-## 1. Set Default Branch
-
-In GitHub, set the default branch to:
-
-- `main`
-
----
-
-## 2. Enable Security Settings
-
-Enable the following security features on the repository:
-
-- Security advisories
-- Dependabot
-- Code scanning
-- Secret scanning
-
----
-
-## 3. Import Branch Ruleset
-
-Import the following JSON as a **branch ruleset**:
-
-```json
-{
-  "id": 12143210,
-  "name": "main-branch-protection",
-  "target": "branch",
-  "source_type": "Repository",
-  "source": "liam-goodchild/docs-engineering-standards",
-  "enforcement": "active",
-  "conditions": {
-    "ref_name": {
-      "exclude": [],
-      "include": [
-        "~DEFAULT_BRANCH"
-      ]
-    }
-  },
-  "rules": [
-    {
-      "type": "deletion"
-    },
-    {
-      "type": "non_fast_forward"
-    },
-    {
-      "type": "pull_request",
-      "parameters": {
-        "required_approving_review_count": 0,
-        "dismiss_stale_reviews_on_push": false,
-        "required_reviewers": [],
-        "require_code_owner_review": false,
-        "require_last_push_approval": false,
-        "required_review_thread_resolution": false,
-        "allowed_merge_methods": [
-          "merge",
-          "squash",
-          "rebase"
-        ]
-      }
-    }
-  ],
-  "bypass_actors": []
-}
+```
++------------------+     +-------------------+     +------------------+
+|   Azure VMs      |     |   Event Grid      |     |   TagIngest      |
+|   (with tags)    +---->+   System Topic    +---->+   Function       |
++------------------+     +-------------------+     +--------+---------+
+                                                           |
+                                                           v
++------------------+     +-------------------+     +------------------+
+|   Scheduler      |     |   DueIndex        |     |   VmSchedules    |
+|   Function       +<----+   Table           +<----+   Table          |
++--------+---------+     +-------------------+     +------------------+
+         |
+         v
++------------------+
+|   Start/Stop     |
+|   VMs            |
++------------------+
 ```
 
----
+## How It Works
 
-## 4. Rename Repository
+### 1. Schedule Configuration (TagIngest)
 
-Rename the repository using the following AI prompt:
+When a VM is created or modified, Event Grid triggers the **TagIngest** function which:
 
-```text
-The repository will contain [description].
-Suggest a repository name following the naming convention at:
-https://raw.githubusercontent.com/liam-goodchild/docs-engineering-standards/main/repo-standards/repo-naming/README.md
+1. Reads the VM's schedule tags (`AutoStart`, `AutoStop`, `AutoEnabled`, `AutoWeekdaysOnly`)
+2. Stores the schedule configuration in the `VmSchedules` table
+3. Immediately populates the `DueIndex` table with upcoming power actions
+
+### 2. Schedule Extension (DailyExtend)
+
+The **DailyExtend** function runs daily at 00:05 UTC to:
+
+1. Read all enabled schedules from `VmSchedules`
+2. Generate power actions for the configured horizon (default: 1 day)
+3. Upsert entries into `DueIndex` to maintain a rolling window of scheduled actions
+
+### 3. Action Execution (Scheduler)
+
+The **Scheduler** function runs every minute to:
+
+1. Query `DueIndex` for actions due in the current UTC minute (with configurable drift tolerance)
+2. Validate each action against the current schedule in `VmSchedules`
+3. Execute the power operation (start or deallocate)
+4. Remove processed/stale entries from `DueIndex`
+
+### Schedule Hash Validation
+
+Each schedule has a computed hash based on its configuration. When the Scheduler executes an action, it compares the hash in `DueIndex` with the current hash in `VmSchedules`. If they differ (schedule was modified), the stale action is discarded. This prevents executing outdated schedules after tag changes.
+
+### VM Tags
+
+Configure VM schedules using these Azure resource tags:
+
+| Tag | Description | Example | Required |
+|-----|-------------|---------|----------|
+| `AutoStart` | Time to start the VM (24-hour format, HH:mm) | `09:00` | No |
+| `AutoStop` | Time to stop/deallocate the VM (24-hour format, HH:mm) | `17:30` | No |
+| `AutoEnabled` | Enable or disable the schedule | `true` / `false` (default: `true`) | No |
+| `AutoWeekdaysOnly` | Only run schedule on weekdays (Mon-Fri) | `true` / `false` (default: `false`) | No |
+
+At least one of `AutoStart` or `AutoStop` must be set for the schedule to be active.
+
+## Deployment
+
+### Prerequisites
+
+- Azure subscription with Contributor access
+- Azure DevOps with service connection configured
+- Terraform state storage account
+
+### Pipeline
+
+The solution uses Azure DevOps Pipelines with a multi-stage deployment:
+
+1. **Terraform Base** - Deploys infrastructure without Event Grid subscription
+2. **Function Deploy** - Builds and deploys the Node.js function code
+3. **Wait for Function** - Polls ARM API until the TagIngest function is registered
+4. **Terraform EventGrid** - Creates the Event Grid subscription (requires function to exist first)
+
+### Manual Deployment
+
+```bash
+# Initialize Terraform
+cd infra
+terraform init \
+  -backend-config="resource_group_name=<state-rg>" \
+  -backend-config="storage_account_name=<state-storage>" \
+  -backend-config="container_name=<state-container>" \
+  -backend-config="key=terraform.tfstate"
+
+# Plan (without Event Grid subscription initially)
+terraform plan -var-file="vars/dev.tfvars" -var="enable_eventgrid_subscription=false"
+
+# Apply base infrastructure
+terraform apply -var-file="vars/dev.tfvars" -var="enable_eventgrid_subscription=false"
+
+# Deploy function code
+cd ../functions
+npm ci && npm run build
+func azure functionapp publish <function-app-name>
+
+# Enable Event Grid subscription
+cd ../infra
+terraform apply -var-file="vars/dev.tfvars" -var="enable_eventgrid_subscription=true"
 ```
 
----
+## Configuration
 
-## 5. Create CI/CD Pipelines, Service Principals and Service Connections
+### Terraform Variables
 
-Create the CI/CD pipelines in the relevant folder within Azure DevOps, ensuring that the CD pipeline has pull request validation manually disabled before opening a PR. Create the necessary service principals and service connections and ensure appropriate RBAC is granted.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `location` | Azure region | Required |
+| `resource_group_name` | Resource group name | Required |
+| `name_prefix` | Prefix for resource names (hyphens allowed) | Required |
+| `storage_prefix` | Storage account prefix (3-20 chars, lowercase alphanumeric) | Required |
+| `storage_replication_type` | Storage replication (LRS, GRS, ZRS) | `LRS` |
+| `storage_container_name` | Blob container for function files | `function-files` |
+| `runtime_name` | Function runtime (node, python, etc.) | Required |
+| `runtime_version` | Runtime version | Required |
+| `maximum_instance_count` | Max function scale-out instances | `50` |
+| `instance_memory_in_mb` | Function instance memory | `2048` |
+| `default_tz` | Default timezone for schedules | Required |
+| `horizon_days` | Days ahead to schedule actions | Required |
+| `allow_drift_minutes` | Minutes of drift tolerance for scheduler | Required |
+| `eventgrid_included_event_types` | Event types to subscribe to | `[]` |
+| `eventgrid_function_name` | Function name for Event Grid endpoint | Required |
+| `enable_eventgrid_subscription` | Enable/disable Event Grid subscription | `false` |
 
----
+### Environment Variables (Function App)
 
-## 6. Update Pipeline Placeholders
+| Variable | Description |
+|----------|-------------|
+| `TABLES_URL` | Azure Table Storage endpoint URL |
+| `DEFAULT_TZ` | Default timezone (e.g., `Europe/London`) |
+| `HORIZON_DAYS` | Number of days to schedule ahead |
+| `ALLOW_DRIFT_MINUTES` | Tolerance for late execution |
 
-Update placeholder container and service connection names in the various pipelines with the generated values.
+## Environments
 
----
-
-## 7. Generate README
-
-Once the code in the repository is in a working state, generate a README using the following AI prompt:
-
-```text
-The repository is for [description of your project].
-Generate a README for my new repository following the template at:
-https://raw.githubusercontent.com/liam-goodchild/docs-engineering-standards/main/readme-standards/README.md
-```
-
----
-
-## 8. Add Terraform Documentation Block
-
-Add the following block into the README for automated Terraform documentation:
-
-```text
-<!-- prettier-ignore-start -->
-<!-- textlint-disable -->
-<!-- BEGIN_TF_DOCS -->
-## Requirements
-
-| Name | Version |
-|------|---------|
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.0, < 2.0 |
-| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >= 4.0, < 5.0 |
-| <a name="requirement_null"></a> [null](#requirement\_null) | >= 3.0, < 4.0 |
-
-## Resources
-
-| Name | Type |
-|------|------|
-| [null_resource.test_resource](https://registry.terraform.io/providers/hashicorp/null/latest/docs/resources/resource) | resource |
-
-## Modules
-
-No modules.
-
-## Inputs
-
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| <a name="input_environment"></a> [environment](#input\_environment) | Name of Azure environment. | `string` | n/a | yes |
-| <a name="input_location"></a> [location](#input\_location) | Resource location for Azure resources. | `string` | n/a | yes |
-| <a name="input_project"></a> [project](#input\_project) | Project short name. | `string` | n/a | yes |
-| <a name="input_tags"></a> [tags](#input\_tags) | Environment tags. | `map(string)` | n/a | yes |
-
-## Outputs
-
-No outputs.
-<!-- END_TF_DOCS -->
-<!-- textlint-enable -->
-<!-- prettier-ignore-end -->
-```
-
----
-
-## Summary
-
-Following these steps ensures your repository is properly configured with security features, branch protection, CI/CD pipelines, and documentation standards from the start.
-
-<!-- textlint-enable -->
-<!-- prettier-ignore-end -->
+| Environment | Resource Group | Function App |
+|-------------|----------------|--------------|
+| Development | `sh-app-dev-uks-pwt-rg-01` | `sh-app-dev-uks-pwt-fa-01` |
+| Production | `sh-app-prd-uks-pwt-rg-01` | `sh-app-prd-uks-pwt-fa-01` |

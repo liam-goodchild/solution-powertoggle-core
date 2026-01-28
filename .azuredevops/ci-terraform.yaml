@@ -23,32 +23,36 @@ parameters:
   - name: environment
     displayName: Environment
     type: string
-    default: Prod
+    default: prd
   - name: additionalTfVars
     displayName: Additional Terraform Variables
     type: string
     default: ' '
+  - name: envs
+    type: object
+    default:
+      dev:
+        backendResourceGroupName: sh-mgmt-dev-uks-tf-rg-01
+        backendStorageAccountName: shmgmtdevukstfst01
+        tfvars: infra/vars/uks/dev.tfvars
+      prd:
+        backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
+        backendStorageAccountName: shmgmtprdukstfst01
+        tfvars: infra/vars/uks/prd.tfvars
 
 variables:
-  # Container, Service Connection & tfvars
-  backendContainerName: infra-template-base
-  serviceConnectionName: sh-sc-base
+  backendContainerName: solution-powertoggle-core
+  serviceConnectionName: sh-sc-powertoggle
   globalTfvars: infra/vars/globals.tfvars
-  tfvars: infra/vars/uks/$(environmentCode).tfvars
-  # State Management
-  ${{ if eq(parameters.environment, 'Prod') }}:
-    backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
-    backendStorageAccountName: shmgmtprdukstfst01
-    environmentCode: prd
-  ${{ else }}:
-    backendResourceGroupName: sh-mgmt-dev-uks-tf-rg-01
-    backendStorageAccountName: shmgmtdevukstfst01
-    environmentCode: dev
+  backendResourceGroupName: ${{ parameters.envs[parameters.environment].backendResourceGroupName }}
+  backendStorageAccountName: ${{ parameters.envs[parameters.environment].backendStorageAccountName }}
+  tfvars: ${{ parameters.envs[parameters.environment].tfvars }}
 
 stages:
   # Stage 1: Linting
   - stage: Linting
     displayName: 'Linting & Validation'
+    condition: not(contains(variables['Build.SourceVersionMessage'], '[skip ci]'))
     jobs:
       - job: SuperLinter
         displayName: 'Super-Linter'
@@ -92,6 +96,6 @@ stages:
               backendKey: terraform.tfstate
               envTfvars: $(tfvars)
               globalTfvars: $(globalTfvars)
-              additionalCommandOptions: ${{ parameters.additionalTfVars }}
+              additionalCommandOptions: '${{ parameters.additionalTfVars }} -var=enable_eventgrid_subscription=false'
               publishPlan: false
               ensureBackendContainer: true

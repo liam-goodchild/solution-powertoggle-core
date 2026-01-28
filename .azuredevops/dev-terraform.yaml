@@ -21,27 +21,39 @@ parameters:
   - name: environment
     displayName: Environment
     type: string
-    values: [Dev, Prod]
+    default: dev
+    values: [dev, prd]
+  - name: enableEventGrid
+    displayName: Enable Event Grid Subscription
+    type: boolean
+    default: false
   - name: additionalTfVars
     displayName: Additional Terraform Variables
     type: string
     default: ' '
+  - name: envs
+    type: object
+    default:
+      dev:
+        backendResourceGroupName: sh-mgmt-dev-uks-tf-rg-01
+        backendStorageAccountName: shmgmtdevukstfst01
+        tfvars: infra/vars/uks/dev.tfvars
+      prd:
+        backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
+        backendStorageAccountName: shmgmtprdukstfst01
+        tfvars: infra/vars/uks/prd.tfvars
 
 variables:
-  # Container, Service Connection & tfvars
-  backendContainerName: infra-template-base
-  serviceConnectionName: sh-sc-base
+  backendContainerName: solution-powertoggle-core
+  serviceConnectionName: sh-sc-powertoggle
   globalTfvars: infra/vars/globals.tfvars
-  tfvars: infra/vars/uks/$(environmentCode).tfvars
-  # State Management
-  ${{ if eq(parameters.environment, 'Prod') }}:
-    backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
-    backendStorageAccountName: shmgmtprdukstfst01
-    environmentCode: prd
+  backendResourceGroupName: ${{ parameters.envs[parameters.environment].backendResourceGroupName }}
+  backendStorageAccountName: ${{ parameters.envs[parameters.environment].backendStorageAccountName }}
+  tfvars: ${{ parameters.envs[parameters.environment].tfvars }}
+  ${{ if eq(parameters.enableEventGrid, true) }}:
+    eventGridArg: '-var=enable_eventgrid_subscription=true'
   ${{ else }}:
-    backendResourceGroupName: sh-mgmt-dev-uks-tf-rg-01
-    backendStorageAccountName: shmgmtdevukstfst01
-    environmentCode: dev
+    eventGridArg: '-var=enable_eventgrid_subscription=false'
 
 stages:
   - stage: Terraform
@@ -61,4 +73,4 @@ stages:
               backendKey: terraform.tfstate
               envTfvars: $(tfvars)
               globalTfvars: $(globalTfvars)
-              additionalCommandOptions: ${{ parameters.additionalTfVars }}
+              additionalCommandOptions: '${{ parameters.additionalTfVars }} $(eventGridArg)'
