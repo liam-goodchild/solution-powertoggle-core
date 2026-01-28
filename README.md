@@ -1,4 +1,4 @@
-# PowerToggle Core
+# PowerToggle
 
 ## Purpose
 
