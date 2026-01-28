@@ -1,7 +1,6 @@
 #########################################
 # Generic
 #########################################
-project         = "sh"
 location        = "uksouth"
 runtime_name    = "node"
 runtime_version = "22"
