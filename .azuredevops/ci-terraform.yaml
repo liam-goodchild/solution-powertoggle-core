@@ -23,26 +23,27 @@ parameters:
   - name: environment
     displayName: Environment
     type: string
-    default: prd
+    default: Prod
   - name: additionalTfVars
     displayName: Additional Terraform Variables
     type: string
     default: ' '
-  - name: envs
-    type: object
-    default:
-      prd:
-        backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
-        backendStorageAccountName: shmgmtprdukstfst01
-        tfvars: infra/vars/uks/prd.tfvars
 
 variables:
+  # Container, Service Connection & tfvars
   backendContainerName: solution-powertoggle-core
   serviceConnectionName: sh-sc-powertoggle
   globalTfvars: infra/vars/globals.tfvars
-  backendResourceGroupName: ${{ parameters.envs[parameters.environment].backendResourceGroupName }}
-  backendStorageAccountName: ${{ parameters.envs[parameters.environment].backendStorageAccountName }}
-  tfvars: ${{ parameters.envs[parameters.environment].tfvars }}
+  tfvars: infra/vars/uks/$(environmentCode).tfvars
+  # State Management
+  ${{ if eq(parameters.environment, 'Prod') }}:
+    backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
+    backendStorageAccountName: shmgmtprdukstfst01
+    environmentCode: prd
+  ${{ else }}:
+    backendResourceGroupName: sh-mgmt-dev-uks-tf-rg-01
+    backendStorageAccountName: shmgmtdevukstfst01
+    environmentCode: dev
 
 stages:
   # Stage 1: Linting
@@ -55,8 +56,10 @@ stages:
         steps:
           - template: validation/linting.yaml@templates
             parameters:
-              prettierConfigFile: .azuredevops/linters/.prettierrc.json
-              checkovConfigFile: .azuredevops/linters/.checkov.yaml
+              prettierConfigFile: .prettierrc.json
+              prettierIgnoreFile: .prettierignore
+              checkovConfigFile: .checkov.yaml
+              tflintConfigFile: .tflint.hcl
 
   # Stage 2: Documentation
   - stage: Documentation
@@ -92,6 +95,6 @@ stages:
               backendKey: terraform.tfstate
               envTfvars: $(tfvars)
               globalTfvars: $(globalTfvars)
-              additionalCommandOptions: '${{ parameters.additionalTfVars }} -var=enable_eventgrid_subscription=false'
+              additionalCommandOptions: ${{ parameters.additionalTfVars }}
               publishPlan: false
               ensureBackendContainer: true
