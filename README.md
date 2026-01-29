@@ -147,6 +147,58 @@ PowerToggle Core automates Azure VM power management through a tag-based configu
 <!-- prettier-ignore-start -->
 <!-- textlint-disable -->
 <!-- BEGIN_TF_DOCS -->
+## Requirements
+
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.0, < 2.0 |
+| <a name="requirement_azuread"></a> [azuread](#requirement\_azuread) | >= 3.0, < 4.0 |
+| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >= 4.0, < 5.0 |
+
+## Resources
+
+| Name | Type |
+|------|------|
+| [azurerm_eventgrid_system_topic.rm_subscription](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/eventgrid_system_topic) | resource |
+| [azurerm_eventgrid_system_topic_event_subscription.to_function](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/eventgrid_system_topic_event_subscription) | resource |
+| [azurerm_function_app_flex_consumption.func](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/function_app_flex_consumption) | resource |
+| [azurerm_resource_group.rg](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group) | resource |
+| [azurerm_role_assignment.func_table_contributor_sa](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
+| [azurerm_role_assignment.func_vm_contributor_sub](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
+| [azurerm_service_plan.plan](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/service_plan) | resource |
+| [azurerm_storage_account.sa](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account) | resource |
+| [azurerm_storage_container.files](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_container) | resource |
+| [azurerm_storage_table.tables](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_table) | resource |
+| [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
+
+## Modules
+
+No modules.
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_allow_drift_minutes"></a> [allow\_drift\_minutes](#input\_allow\_drift\_minutes) | n/a | `string` | n/a | yes |
+| <a name="input_default_tz"></a> [default\_tz](#input\_default\_tz) | n/a | `string` | n/a | yes |
+| <a name="input_eventgrid_function_name"></a> [eventgrid\_function\_name](#input\_eventgrid\_function\_name) | Azure Function name (the function inside the app) that has the EventGridTrigger. | `string` | n/a | yes |
+| <a name="input_horizon_days"></a> [horizon\_days](#input\_horizon\_days) | n/a | `string` | n/a | yes |
+| <a name="input_location"></a> [location](#input\_location) | Azure region. | `string` | n/a | yes |
+| <a name="input_name_prefix"></a> [name\_prefix](#input\_name\_prefix) | Prefix for most resources (hyphens allowed). | `string` | n/a | yes |
+| <a name="input_resource_group_name"></a> [resource\_group\_name](#input\_resource\_group\_name) | Resource group name. | `string` | n/a | yes |
+| <a name="input_runtime_name"></a> [runtime\_name](#input\_runtime\_name) | Flex runtime name: dotnet-isolated, java, node, powershell, python. | `string` | n/a | yes |
+| <a name="input_runtime_version"></a> [runtime\_version](#input\_runtime\_version) | Flex runtime version (stack-specific). | `string` | n/a | yes |
+| <a name="input_storage_prefix"></a> [storage\_prefix](#input\_storage\_prefix) | Storage-account-safe prefix: 3-20 chars, lowercase letters and numbers only. | `string` | n/a | yes |
+| <a name="input_enable_eventgrid_subscription"></a> [enable\_eventgrid\_subscription](#input\_enable\_eventgrid\_subscription) | n/a | `bool` | `false` | no |
+| <a name="input_eventgrid_included_event_types"></a> [eventgrid\_included\_event\_types](#input\_eventgrid\_included\_event\_types) | Optional list of included event types. | `list(string)` | `[]` | no |
+| <a name="input_instance_memory_in_mb"></a> [instance\_memory\_in\_mb](#input\_instance\_memory\_in\_mb) | Instance memory size in MB. | `number` | `2048` | no |
+| <a name="input_maximum_instance_count"></a> [maximum\_instance\_count](#input\_maximum\_instance\_count) | Max scale-out instance count. | `number` | `50` | no |
+| <a name="input_storage_container_name"></a> [storage\_container\_name](#input\_storage\_container\_name) | Blob container name for function files. | `string` | `"function-files"` | no |
+| <a name="input_storage_replication_type"></a> [storage\_replication\_type](#input\_storage\_replication\_type) | Storage replication type (e.g., LRS, GRS, ZRS). | `string` | `"LRS"` | no |
+
+## Outputs
+
+No outputs.
 <!-- END_TF_DOCS -->
 <!-- textlint-enable -->
 <!-- prettier-ignore-end -->
