@@ -23,7 +23,7 @@ parameters:
   - name: environment
     displayName: Environment
     type: string
-    default: Prod
+    default: prd
   - name: additionalTfVars
     displayName: Additional Terraform Variables
     type: string
@@ -32,25 +32,30 @@ parameters:
     displayName: Enable Git Versioning
     type: boolean
     default: true
+  - name: envs
+    type: object
+    default:
+      prd:
+        backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
+        backendStorageAccountName: shmgmtprdukstfst01
+        tfvars: infra/vars/uks/prd.tfvars
+        functionAppName: sh-app-prd-uks-pwt-fa-01
+        functionResourceGroupName: sh-app-prd-uks-pwt-rg-01
+        eventgridFunctionName: TagIngest
 
 variables:
-  # Container, Service Connection & tfvars
-  backendContainerName: infra-template-base
-  serviceConnectionName: sh-sc-base
+  backendContainerName: solution-powertoggle-core
+  serviceConnectionName: sh-sc-powertoggle
   globalTfvars: infra/vars/globals.tfvars
-  tfvars: infra/vars/uks/$(environmentCode).tfvars
-  # State Management
-  ${{ if eq(parameters.environment, 'Prod') }}:
-    backendResourceGroupName: sh-mgmt-prd-uks-tf-rg-01
-    backendStorageAccountName: shmgmtprdukstfst01
-    environmentCode: prd
-  ${{ else }}:
-    backendResourceGroupName: sh-mgmt-dev-uks-tf-rg-01
-    backendStorageAccountName: shmgmtdevukstfst01
-    environmentCode: dev
+  backendResourceGroupName: ${{ parameters.envs[parameters.environment].backendResourceGroupName }}
+  backendStorageAccountName: ${{ parameters.envs[parameters.environment].backendStorageAccountName }}
+  tfvars: ${{ parameters.envs[parameters.environment].tfvars }}
+  functionAppName: ${{ parameters.envs[parameters.environment].functionAppName }}
+  functionResourceGroupName: ${{ parameters.envs[parameters.environment].functionResourceGroupName }}
+  eventgridFunctionName: ${{ parameters.envs[parameters.environment].eventgridFunctionName }}
 
 stages:
-  # Stage 1: Terraform Plan
+  # Stage 1: Terraform Plan (Base Infrastructure)
   - stage: Plan
     displayName: 'Terraform Plan'
     jobs:
@@ -68,19 +73,19 @@ stages:
               backendKey: terraform.tfstate
               envTfvars: $(tfvars)
               globalTfvars: $(globalTfvars)
-              additionalCommandOptions: ${{ parameters.additionalTfVars }}
+              additionalCommandOptions: '${{ parameters.additionalTfVars }} -var=enable_eventgrid_subscription=false'
               publishPlan: true
               planArtifactName: 'tfplan-${{ parameters.environment }}'
               ensureBackendContainer: true
 
-  # Stage 2: Terraform Apply
-  - stage: Apply
-    displayName: 'Terraform Apply'
+  # Stage 2: Terraform Apply (Base Infrastructure - No Event Grid)
+  - stage: ApplyBase
+    displayName: 'Terraform Apply - Base Infrastructure'
     dependsOn: Plan
     condition: succeeded()
     jobs:
-      - job: TerraformApply
-        displayName: 'Terraform Apply'
+      - job: TerraformApplyBase
+        displayName: 'Terraform Apply - Base'
         steps:
           - checkout: self
           - template: terraform/terraform-cicd.yaml@templates
@@ -93,13 +98,116 @@ stages:
               backendKey: terraform.tfstate
               envTfvars: $(tfvars)
               globalTfvars: $(globalTfvars)
-              additionalCommandOptions: ${{ parameters.additionalTfVars }}
+              additionalCommandOptions: '${{ parameters.additionalTfVars }} -var=enable_eventgrid_subscription=false'
               ensureBackendContainer: false
 
-  # Stage 3: Git Versioning
+  # Stage 3: Deploy Function Code
+  - stage: FunctionDeploy
+    displayName: 'Deploy Function App Code'
+    dependsOn: ApplyBase
+    condition: succeeded()
+    jobs:
+      - job: FunctionDeploy
+        displayName: 'Deploy Function App Code'
+        steps:
+          - checkout: self
+
+          - task: NodeTool@0
+            displayName: 'Select Node Version'
+            inputs:
+              versionSpec: '22.x'
+
+          - script: |
+              set -euo pipefail
+              cd functions/src
+              npm ci
+              npm run build --if-present
+              npm prune --omit-dev
+            displayName: 'Build Functions'
+
+          - task: ArchiveFiles@2
+            displayName: 'Zip Functions'
+            inputs:
+              rootFolderOrFile: 'functions/src'
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: '$(Build.ArtifactStagingDirectory)/functionapp.zip'
+              replaceExistingArchive: true
+
+          - task: AzureCLI@2
+            displayName: 'Deploy Functions'
+            inputs:
+              azureSubscription: $(serviceConnectionName)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                az functionapp deployment source config-zip \
+                  --resource-group "$FUNCTION_RG" \
+                  --name "$FUNCTION_APP" \
+                  --src "$PACKAGE_PATH"
+            env:
+              FUNCTION_RG: $(functionResourceGroupName)
+              FUNCTION_APP: $(functionAppName)
+              PACKAGE_PATH: $(Build.ArtifactStagingDirectory)/functionapp.zip
+
+          - task: AzureCLI@2
+            displayName: 'Wait For Function To Exist'
+            inputs:
+              azureSubscription: $(serviceConnectionName)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                SUB_ID="$(az account show --query id -o tsv)"
+                RG="$FUNCTION_RG"
+                APP="$FUNCTION_APP"
+                FUNC="$FUNCTION_NAME"
+
+                for i in {1..60}; do
+                  if az rest --method get \
+                    --url "https://management.azure.com/subscriptions/${SUB_ID}/resourceGroups/${RG}/providers/Microsoft.Web/sites/${APP}/functions/${FUNC}?api-version=2022-03-01" \
+                    >/dev/null 2>&1; then
+                    echo "Function ${FUNC} is now visible in ARM"
+                    exit 0
+                  fi
+                  echo "Waiting for function to be visible... (attempt $i/60)"
+                  sleep 10
+                done
+                echo "##[error]Function not visible in ARM: ${APP}/functions/${FUNC}"
+                exit 1
+            env:
+              FUNCTION_RG: $(functionResourceGroupName)
+              FUNCTION_APP: $(functionAppName)
+              FUNCTION_NAME: $(eventgridFunctionName)
+
+  # Stage 4: Terraform Apply (Event Grid Subscription)
+  - stage: ApplyEventGrid
+    displayName: 'Terraform Apply - Event Grid'
+    dependsOn: FunctionDeploy
+    condition: succeeded()
+    jobs:
+      - job: TerraformApplyEventGrid
+        displayName: 'Terraform Apply - Event Grid'
+        steps:
+          - checkout: self
+          - template: terraform/terraform-cicd.yaml@templates
+            parameters:
+              terraformAction: apply
+              serviceConnectionName: $(serviceConnectionName)
+              backendResourceGroupName: $(backendResourceGroupName)
+              backendStorageAccountName: $(backendStorageAccountName)
+              backendContainerName: $(backendContainerName)
+              backendKey: terraform.tfstate
+              envTfvars: $(tfvars)
+              globalTfvars: $(globalTfvars)
+              additionalCommandOptions: '${{ parameters.additionalTfVars }} -var=enable_eventgrid_subscription=true'
+              ensureBackendContainer: false
+
+  # Stage 5: Git Versioning
   - stage: Versioning
     displayName: 'Git Versioning'
-    dependsOn: Apply
+    dependsOn: ApplyEventGrid
     condition: and(succeeded(), eq('${{ parameters.enableVersioning }}', 'true'))
     jobs:
       - job: GitVersioning

@@ -31,8 +31,8 @@ parameters:
 
 variables:
   # Container, Service Connection & tfvars
-  backendContainerName: infra-template-base
-  serviceConnectionName: sh-sc-base
+  backendContainerName: solution-powertoggle-core
+  serviceConnectionName: sh-sc-powertoggle
   globalTfvars: infra/vars/globals.tfvars
   tfvars: infra/vars/uks/$(environmentCode).tfvars
   # State Management
@@ -49,14 +49,17 @@ stages:
   # Stage 1: Linting
   - stage: Linting
     displayName: 'Linting & Validation'
+    condition: not(contains(variables['Build.SourceVersionMessage'], '[skip ci]'))
     jobs:
       - job: SuperLinter
         displayName: 'Super-Linter'
         steps:
           - template: validation/linting.yaml@templates
             parameters:
-              prettierConfigFile: .azuredevops/linters/.prettierrc.json
-              checkovConfigFile: .azuredevops/linters/.checkov.yaml
+              prettierConfigFile: .prettierrc.json
+              prettierIgnoreFile: .prettierignore
+              checkovConfigFile: .checkov.yaml
+              tflintConfigFile: .tflint.hcl
 
   # Stage 2: Documentation
   - stage: Documentation

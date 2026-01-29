@@ -1,2 +1,24 @@
 skip-check:
+  # Module source not pinned to specific version - managed via solution versioning
   - CKV_TF_1
+
+  # Storage Account checks
+  - CKV_AZURE_206 # Replication type is configurable via variable
+  - CKV_AZURE_44 # TLS 1.2 is the default in azurerm provider 4.x
+  - CKV_AZURE_190 # Public blob access is disabled by default in azurerm provider 4.x
+  - CKV_AZURE_33 # Queue logging not required - solution uses Table storage only
+  - CKV_AZURE_59 # Public network access required for serverless function app
+  - CKV2_AZURE_41 # SAS tokens not used - managed identity authentication
+  - CKV2_AZURE_40 # Shared key required for function app deployment
+  - CKV2_AZURE_38 # Soft delete not required for ephemeral schedule data
+  - CKV2_AZURE_47 # Anonymous blob access disabled by default in azurerm provider 4.x
+  - CKV2_AZURE_33 # Private endpoint not required for internal automation solution
+  - CKV2_AZURE_1 # Customer managed keys not required for non-sensitive schedule data
+
+  # Storage Container/Table checks
+  - CKV2_AZURE_21 # Blob logging configured at storage account level if required
+  - CKV2_AZURE_20 # Table logging configured at storage account level if required
+
+  # Service Plan checks
+  - CKV_AZURE_212 # Flex Consumption plan auto-scales - minimum instances not applicable
+  - CKV_AZURE_225 # Zone redundancy not supported for Flex Consumption SKU
